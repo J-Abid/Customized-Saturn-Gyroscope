@@ -1,4 +1,4 @@
-# customized-Saturn-Gyroscope #
+# Customized-Saturn-Gyroscope #
 ** This asset is created by M. Junaid Abid and it can be integrated into any Portfolio **
 
 # 🪐 Matte Gyroscope 3D Asset
