@@ -1,4 +1,4 @@
-# Custome-Saturn-Gyroscope #
+# customized-Saturn-Gyroscope #
 ** This asset is created by M. Junaid Abid and it can be integrated into any Portfolio **
 
 # 🪐 Matte Gyroscope 3D Asset
@@ -65,6 +65,6 @@ This project is contained entirely within a single `index.html` file. No build p
 
 ## 📝 License
 
-This project is open source and available under the [MIT License](https://www.google.com/search?q=LICENSE).
+This project is open source and available under the [MIT License].
 
 *Created by M. Junaid Abid*
