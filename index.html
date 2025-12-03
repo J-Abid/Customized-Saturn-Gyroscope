@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matte Gyroscope Asset</title>
+
+    <!-- Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Roboto+Mono:wght@300;400&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { 
+                        display: ['Orbitron', 'sans-serif'],
+                        mono: ['Roboto Mono', 'monospace']
+                    },
+                    colors: {
+                        cyber: { 
+                            black: '#0a0a0f',
+                            dark: '#13131f', 
+                            panel: 'rgba(19, 19, 31, 0.9)',
+                            accent: '#00f0ff',
+                            text: '#e0e0e0'
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { 
+            background-color: #050505; 
+            margin: 0; overflow: hidden;
+            font-family: 'Roboto Mono', monospace;
+            color: #e0e0e0;
+            cursor: none; /* Custom cursor */
+        }
+
+        /* Custom Fluid Cursor Layer */
+        #cursor-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 9999;
+            mix-blend-mode: screen;
+        }
+
+        /* UI Inputs */
+        .cyber-input {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid #333;
+            color: #00f0ff;
+            font-family: 'Roboto Mono', monospace;
+            padding: 4px 8px;
+            font-size: 12px;
+            width: 100%;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .cyber-input:focus { border-color: #00f0ff; }
+
+        /* Sliders */
+        input[type=range] {
+            -webkit-appearance: none; width: 100%; background: transparent; margin: 8px 0;
+        }
+        input[type=range]::-webkit-slider-track {
+            width: 100%; height: 2px; background: #333;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 12px; width: 6px; 
+            background: #00f0ff; cursor: pointer; margin-top: -5px;
+            box-shadow: 0 0 8px #00f0ff;
+        }
+
+        /* Color Picker Override */
+        input[type=color] {
+            -webkit-appearance: none; border: none; width: 100%; height: 24px; padding: 0; background: none;
+        }
+        input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type=color]::-webkit-color-swatch { border: 1px solid #333; border-radius: 2px; }
+
+        /* Scrollbar */
+        .cyber-scroll::-webkit-scrollbar { width: 4px; }
+        .cyber-scroll::-webkit-scrollbar-track { background: #0a0a0f; }
+        .cyber-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+        .cyber-scroll::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
+
+        /* Editable Text */
+        .editable-title {
+            background: transparent; border: none; outline: none;
+            text-align: center; width: 100%;
+            text-transform: uppercase;
+            color: transparent;
+            background-clip: text;
+            -webkit-background-clip: text;
+            background-image: linear-gradient(to bottom, #fff, #94a3b8);
+            cursor: text;
+        }
+        .editable-title:focus { border-bottom: 1px solid #00f0ff; }
+    </style>
+</head>
+<body>
+    <canvas id="cursor-canvas"></canvas>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext, useMemo } = React;
+
+        // === STATE CONTEXT ===
+        const ConfigContext = createContext();
+
+        const DEFAULT_CONFIG = {
+            // Planet
+            planetColor: "#2a2a2a",
+            matteRoughness: 0.9,
+            // Rings
+            ring1Color: "#ff0055",
+            ring2Color: "#00f0ff",
+            ring3Color: "#ccff00",
+            ringThickness: 0.15,
+            // Space
+            showStars: true,
+            showAsteroids: true,
+            showShootingStars: true,
+            // Physics
+            rotationSpeed: 1.0,
+            // Cursor
+            cursorColor: "#00f0ff",
+            cursorSize: 40,
+            cursorDensity: 5,
+            // Text
+            title: "MATTE GYRO",
+            subtitle: "INTERACTIVE ASSET v4.0"
+        };
+
+        // === 1. FLUID CURSOR COMPONENT ===
+        const FluidCursor = () => {
+            const { config } = useContext(ConfigContext);
+            const particles = useRef([]);
+            
+            useEffect(() => {
+                const canvas = document.getElementById('cursor-canvas');
+                const ctx = canvas.getContext('2d');
+                let animId;
+
+                const resize = () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                };
+                window.addEventListener('resize', resize);
+                resize();
+
+                const onMove = (e) => {
+                    // Spawn particles based on density
+                    const count = Math.ceil(config.cursorDensity / 2);
+                    for(let i=0; i<count; i++) {
+                        particles.current.push({
+                            x: e.clientX, y: e.clientY,
+                            vx: (Math.random()-0.5) * 1.5,
+                            vy: (Math.random()-0.5) * 1.5,
+                            life: 1.0,
+                            size: Math.random() * config.cursorSize + 5,
+                            color: config.cursorColor
+                        });
+                    }
+                };
+                window.addEventListener('mousemove', onMove);
+
+                const animate = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    particles.current.forEach((p, i) => {
+                        p.x += p.vx; p.y += p.vy;
+                        p.life -= 0.02; p.size *= 0.94;
+
+                        if(p.life > 0) {
+                            ctx.beginPath();
+                            // Hex to RGB
+                            const hex = p.color.replace('#','');
+                            const r = parseInt(hex.substring(0,2), 16);
+                            const g = parseInt(hex.substring(2,4), 16);
+                            const b = parseInt(hex.substring(4,6), 16);
+                            
+                            const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+                            grad.addColorStop(0, `rgba(${r},${g},${b},${p.life * 0.3})`);
+                            grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+                            
+                            ctx.fillStyle = grad;
+                            ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+                            ctx.fill();
+                        } else {
+                            particles.current.splice(i, 1);
+                        }
+                    });
+                    animId = requestAnimationFrame(animate);
+                };
+                animate();
+
+                return () => {
+                    window.removeEventListener('resize', resize);
+                    window.removeEventListener('mousemove', onMove);
+                    cancelAnimationFrame(animId);
+                };
+            }, [config.cursorSize, config.cursorDensity, config.cursorColor]);
+
+            return null;
+        };
+
+        // === 2. THREE.JS SCENE ===
+        const Scene = () => {
+            const containerRef = useRef(null);
+            const { config } = useContext(ConfigContext);
+            
+            // Interaction State
+            const state = useRef({
+                isDragging: false,
+                prevMouse: { x:0, y:0 },
+                vel: { x:0, y:0 }
+            });
+
+            // Scene Objects Reference for Updates
+            const refs = useRef({
+                planet: null,
+                ringGroup: null,
+                stars: null,
+                asteroids: null,
+                shootingStars: []
+            });
+
+            // Init Scene
+            useEffect(() => {
+                if(!containerRef.current) return;
+
+                // Setup
+                const scene = new THREE.Scene();
+                // Add subtle fog for depth
+                scene.fog = new THREE.FogExp2(0x050505, 0.015);
+
+                const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+                camera.position.z = 25;
+
+                const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.shadowMap.enabled = true;
+                containerRef.current.appendChild(renderer.domElement);
+
+                // --- A. MATTE PLANET ---
+                const planetGeo = new THREE.SphereGeometry(3.5, 64, 64);
+                // Standard Material with High Roughness = Matte
+                const planetMat = new THREE.MeshStandardMaterial({
+                    color: config.planetColor,
+                    roughness: 0.9,
+                    metalness: 0.1,
+                    flatShading: false
+                });
+                const planet = new THREE.Mesh(planetGeo, planetMat);
+                
+                const planetGroup = new THREE.Group();
+                planetGroup.add(planet);
+                scene.add(planetGroup);
+                refs.current.planet = planet;
+
+                // --- B. RINGS CONTAINER ---
+                const ringGroup = new THREE.Group();
+                planetGroup.add(ringGroup);
+                refs.current.ringGroup = ringGroup;
+
+                // --- C. SPACE ELEMENTS ---
+                // Stars
+                const starGeo = new THREE.BufferGeometry();
+                const starCount = 2000;
+                const starPos = new Float32Array(starCount * 3);
+                for(let i=0; i<starCount*3; i++) starPos[i] = (Math.random()-0.5)*200;
+                starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+                const starMat = new THREE.PointsMaterial({ size: 0.15, color: 0xffffff, transparent: true, opacity: 0.8 });
+                const stars = new THREE.Points(starGeo, starMat);
+                scene.add(stars);
+                refs.current.stars = stars;
+
+                // Asteroids
+                const astGeo = new THREE.BufferGeometry();
+                const astCount = 400;
+                const astPos = new Float32Array(astCount * 3);
+                for(let i=0; i<astCount; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const rad = 10 + Math.random() * 8;
+                    astPos[i*3] = Math.cos(ang) * rad;
+                    astPos[i*3+1] = (Math.random()-0.5) * 3; // Spread Y
+                    astPos[i*3+2] = Math.sin(ang) * rad;
+                }
+                astGeo.setAttribute('position', new THREE.BufferAttribute(astPos, 3));
+                const astMat = new THREE.PointsMaterial({ size: 0.1, color: 0xaaaaaa });
+                const asteroids = new THREE.Points(astGeo, astMat);
+                scene.add(asteroids);
+                refs.current.asteroids = asteroids;
+
+                // Shooting Stars Group
+                const shootGroup = new THREE.Group();
+                scene.add(shootGroup);
+                refs.current.shootGroup = shootGroup;
+
+                // --- D. LIGHTING (No internal glow, just external light) ---
+                const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+                sunLight.position.set(10, 10, 20);
+                scene.add(sunLight);
+                
+                const ambient = new THREE.AmbientLight(0x404040, 1.5); // Soft ambient
+                scene.add(ambient);
+
+                // --- EVENTS ---
+                const onDown = (e) => {
+                    if(e.target.closest('#ui-panel')) return;
+                    state.current.isDragging = true;
+                    state.current.prevMouse = { x: e.clientX, y: e.clientY };
+                };
+                const onUp = () => state.current.isDragging = false;
+                const onMove = (e) => {
+                    if(state.current.isDragging) {
+                        const dx = e.clientX - state.current.prevMouse.x;
+                        const dy = e.clientY - state.current.prevMouse.y;
+                        state.current.vel.y += dx * 0.0005;
+                        state.current.vel.x += dy * 0.0005;
+                        state.current.prevMouse = { x: e.clientX, y: e.clientY };
+                    }
+                };
+
+                window.addEventListener('mousedown', onDown);
+                window.addEventListener('mouseup', onUp);
+                window.addEventListener('mousemove', onMove);
+
+                // Loop
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    
+                    const speed = config.rotationSpeed || 1;
+
+                    // 1. Physics
+                    if(!state.current.isDragging) {
+                        state.current.vel.x *= 0.95;
+                        state.current.vel.y *= 0.95;
+                        planetGroup.rotation.y += 0.002 * speed;
+                    }
+                    planetGroup.rotation.y += state.current.vel.y;
+                    planetGroup.rotation.x += state.current.vel.x;
+
+                    // 2. Ring Animation
+                    if(ringGroup.children.length === 3) {
+                        ringGroup.children[0].rotation.z += 0.01 * speed;
+                        ringGroup.children[1].rotation.z -= 0.008 * speed;
+                        ringGroup.children[2].rotation.z += 0.012 * speed;
+                    }
+
+                    // 3. Space Animation
+                    asteroids.rotation.y -= 0.0005 * speed;
+                    
+                    // Shooting Stars Logic
+                    if(Math.random() < 0.015 && refs.current.shootingStars) {
+                        // Add new shooting star logic here if enabled (handled in update effect)
+                    }
+
+                    renderer.render(scene, camera);
+                };
+                animate();
+
+                // Store Rebuild Function
+                containerRef.current.rebuildRings = (thickness, colors) => {
+                    // Clear old
+                    while(ringGroup.children.length) {
+                        const m = ringGroup.children[0];
+                        m.geometry.dispose();
+                        m.material.dispose();
+                        ringGroup.remove(m);
+                    }
+                    
+                    // Build 3 New Rings
+                    const createRing = (rad, tilt, color) => {
+                        const geo = new THREE.TorusGeometry(rad, thickness, 16, 100);
+                        const mat = new THREE.MeshBasicMaterial({ 
+                            color: color, 
+                            transparent: true, opacity: 0.8,
+                            side: THREE.DoubleSide
+                        });
+                        const mesh = new THREE.Mesh(geo, mat);
+                        mesh.rotation.x = tilt;
+                        return mesh;
+                    };
+
+                    const r1 = createRing(5.0, Math.PI/2.1, colors[0]);
+                    const r2 = createRing(6.5, Math.PI/6, colors[1]);
+                    const r3 = createRing(8.0, -Math.PI/4, colors[2]);
+
+                    ringGroup.add(r1);
+                    ringGroup.add(r2);
+                    ringGroup.add(r3);
+                };
+
+                return () => {
+                    if(containerRef.current) containerRef.current.innerHTML = '';
+                    window.removeEventListener('mousedown', onDown);
+                    window.removeEventListener('mouseup', onUp);
+                    window.removeEventListener('mousemove', onMove);
+                };
+            }, []); // Run once
+
+            // === DYNAMIC UPDATES ===
+            
+            // Update Ring Geometry & Colors
+            useEffect(() => {
+                if(containerRef.current.rebuildRings) {
+                    containerRef.current.rebuildRings(config.ringThickness, [config.ring1Color, config.ring2Color, config.ring3Color]);
+                }
+            }, [config.ringThickness, config.ring1Color, config.ring2Color, config.ring3Color]);
+
+            // Update Planet Material
+            useEffect(() => {
+                if(refs.current.planet) {
+                    refs.current.planet.material.color.set(config.planetColor);
+                }
+            }, [config.planetColor]);
+
+            // Update Space Visibility
+            useEffect(() => {
+                if(refs.current.stars) refs.current.stars.visible = config.showStars;
+                if(refs.current.asteroids) refs.current.asteroids.visible = config.showAsteroids;
+                if(refs.current.shootGroup) refs.current.shootGroup.visible = config.showShootingStars;
+            }, [config.showStars, config.showAsteroids, config.showShootingStars]);
+
+            // Shooting Stars Animation Loop (Separate to keep logic clean)
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    if(!config.showShootingStars) return;
+                    if(!refs.current.shootGroup) return;
+
+                    const geo = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,4)
+                    ]);
+                    const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1 });
+                    const star = new THREE.Line(geo, mat);
+                    
+                    // Random start
+                    star.position.set((Math.random()-0.5)*80, (Math.random()-0.5)*80, -30);
+                    star.lookAt(0,0,0);
+                    
+                    refs.current.shootGroup.add(star);
+                    
+                    // Animate this specific star
+                    const animateStar = () => {
+                        if(!star) return;
+                        star.translateZ(2); // fast speed
+                        star.material.opacity -= 0.05;
+                        if(star.material.opacity <= 0) {
+                            refs.current.shootGroup.remove(star);
+                            geo.dispose();
+                            mat.dispose();
+                        } else {
+                            requestAnimationFrame(animateStar);
+                        }
+                    };
+                    animateStar();
+
+                }, 200);
+                return () => clearInterval(interval);
+            }, [config.showShootingStars]);
+
+            return <div ref={containerRef} className="absolute inset-0 z-0" />;
+        };
+
+        // === 3. SETTINGS PANEL ===
+        const SettingsPanel = () => {
+            const { config, setConfig } = useContext(ConfigContext);
+            const [isOpen, setIsOpen] = useState(false);
+            const [activeTab, setActiveTab] = useState('MAIN');
+
+            const handleChange = (key, val) => setConfig(prev => ({...prev, [key]: val}));
+
+            const TabButton = ({ id, label, icon }) => (
+                <button 
+                    onClick={() => setActiveTab(id)}
+                    className={`flex-1 py-2 text-[10px] font-bold tracking-widest border-b-2 transition-colors ${activeTab === id ? 'border-cyber-accent text-cyber-accent' : 'border-transparent text-gray-500 hover:text-white'}`}
+                >
+                    <i className={`fa-solid ${icon} mb-1 block text-sm`}></i>
+                    {label}
+                </button>
+            );
+
+            return (
+                <div id="ui-panel" className="fixed bottom-8 right-8 z-50 flex flex-col items-end font-mono">
+                    
+                    {isOpen && (
+                        <div className="bg-cyber-panel backdrop-blur-md border border-gray-800 w-80 rounded-lg shadow-2xl animate-[fadeIn_0.2s_ease-out] overflow-hidden">
+                            {/* Header */}
+                            <div className="bg-cyber-dark p-3 border-b border-gray-800 flex justify-between items-center">
+                                <span className="text-cyber-accent text-xs font-bold tracking-[0.2em]">/// SYSTEM_CONFIG</span>
+                                <span className="text-[10px] text-gray-500">ONLINE</span>
+                            </div>
+
+                            {/* Tabs */}
+                            <div className="flex bg-black/20">
+                                <TabButton id="MAIN" label="CORE" icon="fa-globe" />
+                                <TabButton id="RINGS" label="RINGS" icon="fa-ring" />
+                                <TabButton id="SPACE" label="SPACE" icon="fa-star" />
+                                <TabButton id="FX" label="FX" icon="fa-wand-magic-sparkles" />
+                            </div>
+
+                            {/* Content Area */}
+                            <div className="p-5 h-64 overflow-y-auto cyber-scroll">
+                                
+                                {activeTab === 'MAIN' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">PLANET COLOR (MATTE)</label>
+                                            <div className="flex items-center gap-2">
+                                                <input type="color" value={config.planetColor} onChange={e => handleChange('planetColor', e.target.value)} />
+                                                <span className="text-[10px] text-gray-500">{config.planetColor}</span>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">ROTATION SPEED: {config.rotationSpeed}x</label>
+                                            <input type="range" min="0" max="5" step="0.1" value={config.rotationSpeed} onChange={e => handleChange('rotationSpeed', parseFloat(e.target.value))} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'RINGS' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">RING 1 COLOR</label>
+                                            <input type="color" value={config.ring1Color} onChange={e => handleChange('ring1Color', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">RING 2 COLOR</label>
+                                            <input type="color" value={config.ring2Color} onChange={e => handleChange('ring2Color', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">RING 3 COLOR</label>
+                                            <input type="color" value={config.ring3Color} onChange={e => handleChange('ring3Color', e.target.value)} />
+                                        </div>
+                                        <div className="border-t border-gray-800 pt-3">
+                                            <label className="text-[10px] text-gray-400 mb-1 block">THICKNESS: {config.ringThickness}</label>
+                                            <input type="range" min="0.01" max="0.5" step="0.01" value={config.ringThickness} onChange={e => handleChange('ringThickness', parseFloat(e.target.value))} />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'SPACE' && (
+                                    <div className="space-y-3">
+                                        <label className="flex items-center justify-between cursor-pointer group">
+                                            <span className="text-xs text-gray-300 group-hover:text-cyber-accent transition">STAR FIELD</span>
+                                            <input type="checkbox" checked={config.showStars} onChange={e => handleChange('showStars', e.target.checked)} className="accent-cyber-accent" />
+                                        </label>
+                                        <label className="flex items-center justify-between cursor-pointer group">
+                                            <span className="text-xs text-gray-300 group-hover:text-cyber-accent transition">ASTEROID BELT</span>
+                                            <input type="checkbox" checked={config.showAsteroids} onChange={e => handleChange('showAsteroids', e.target.checked)} className="accent-cyber-accent" />
+                                        </label>
+                                        <label className="flex items-center justify-between cursor-pointer group">
+                                            <span className="text-xs text-gray-300 group-hover:text-cyber-accent transition">DATA STREAMS</span>
+                                            <input type="checkbox" checked={config.showShootingStars} onChange={e => handleChange('showShootingStars', e.target.checked)} className="accent-cyber-accent" />
+                                        </label>
+                                    </div>
+                                )}
+
+                                {activeTab === 'FX' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">CURSOR COLOR</label>
+                                            <input type="color" value={config.cursorColor} onChange={e => handleChange('cursorColor', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">FOG SIZE</label>
+                                            <input type="range" min="10" max="100" value={config.cursorSize} onChange={e => handleChange('cursorSize', parseInt(e.target.value))} />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] text-gray-400 mb-1 block">FOG DENSITY</label>
+                                            <input type="range" min="1" max="20" value={config.cursorDensity} onChange={e => handleChange('cursorDensity', parseInt(e.target.value))} />
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
+                        </div>
+                    )}
+
+                    <button 
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="w-12 h-12 bg-cyber-dark border border-cyber-accent rounded-full flex items-center justify-center text-cyber-accent hover:bg-cyber-accent hover:text-black transition-all shadow-[0_0_15px_rgba(0,240,255,0.3)]"
+                    >
+                        <i className={`fa-solid ${isOpen ? 'fa-times' : 'fa-sliders'} text-lg`}></i>
+                    </button>
+                </div>
+            );
+        };
+
+        // === 4. MAIN APP ===
+        const App = () => {
+            const [config, setConfig] = useState(DEFAULT_CONFIG);
+
+            return (
+                <ConfigContext.Provider value={{ config, setConfig }}>
+                    <div className="relative w-full h-screen">
+                        
+                        {/* Text Overlay */}
+                        <div className="absolute top-20 left-0 w-full z-10 text-center pointer-events-auto">
+                            <div className="max-w-3xl mx-auto px-4">
+                                <input 
+                                    value={config.title}
+                                    onChange={(e) => setConfig({...config, title: e.target.value})}
+                                    className="editable-title font-display text-5xl md:text-7xl font-black tracking-tighter mb-2"
+                                />
+                                <input 
+                                    value={config.subtitle}
+                                    onChange={(e) => setConfig({...config, subtitle: e.target.value})}
+                                    className="editable-title font-mono text-sm md:text-lg tracking-[0.5em] text-cyber-accent opacity-80"
+                                />
+                            </div>
+                        </div>
+
+                        <FluidCursor />
+                        <Scene />
+                        <SettingsPanel />
+                    </div>
+                </ConfigContext.Provider>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
