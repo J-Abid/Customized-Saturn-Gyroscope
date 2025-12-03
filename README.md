@@ -5,7 +5,7 @@
 
 A highly interactive, standalone 3D portfolio asset featuring a matte-finish planet, gyroscopic rings, and immersive space effects. Built with **React** and **Three.js** in a single, portable HTML file.
 
-> **Live Demo:** https://j-abid.github.io/Custome-Saturn-Gyroscope/
+> **Live Demo:** https://j-abid.github.io/Customized-Saturn-Gyroscope/
 
 ## ✨ Key Features
 
