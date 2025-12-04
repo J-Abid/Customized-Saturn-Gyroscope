@@ -16,6 +16,8 @@ A highly interactive, standalone 3D portfolio asset featuring a matte-finish pla
   * **Cyberpunk UI:** A glassmorphism settings panel with tabbed navigation and neon accents.
   * **Fluid Cursor:** A custom "foggy" fluid cursor trail that reacts to mouse movement.
 
+<img width="879" height="742" alt="image" src="https://github.com/user-attachments/assets/01fd2207-2fd8-4fff-ad1a-f4c0da0a1029" />
+
 ### 🎮 Interaction & Physics
 
   * **Momentum-Based Rotation:** Drag the planet to spin it. The physics engine includes friction and momentum for a realistic feel.
